@@ -1,33 +1,109 @@
-import Head from 'next/head'
-import styles from '@/components/styles/Home.module.css'
-import SendModal from '../components/SendModal'
+import Head from "next/head"
+import styles from "@/components/styles/Home.module.css"
+import Modal from "../components/Modal"
+import { useEffect, useState } from 'react'
+import * as btc from "@scure/btc-signer"
+import * as secp from "@noble/secp256k1"
+import { hex } from "@scure/base"
 
-import * as btc from '@scure/btc-signer'
-import * as secp from '@noble/secp256k1'
-import { hex } from '@scure/base'
+const send = async (privateKey, recipientAddress, amount) => {
+  // Derive the sender information
+  const senderPublicKey = getPublicKeyFromPrivateKey(privateKey)
+  const senderAddress = getAddressFromPublicKey(senderPublicKey)
+  // Create the transaction
+  const tx = new btc.Transaction()
+  // Get the UTXOs from mempool.space
+  const response = await fetch(`https://mempool.space/api/address/${senderAddress}/utxo`)
+  const data = await response.json()
+  console.log('Data from mempool.space:')
+  console.log(data)
+  // Add the UTXOs as inputs to the transaction
+  for (const utxo of data) {
+    const inputScript = btc.p2wpkh(secp.getPublicKey(privateKey, true)).script
+    console.log(inputScript)
+    tx.addInput({
+      txid: utxo.txid,
+      index: utxo.vout,
+      witnessUtxo: {
+        amount: BigInt(utxo.value),
+        script: inputScript
+      }
+    })
+  }
+  // Add an output to the recipient address
+  tx.addOutputAddress(recipientAddress, BigInt(amount))
+  console.log(tx.unsignedTx)
 
-const send = () => {
-  return 0
+  // Sign the inputs
+  tx.sign(privateKey)
+  // Finalize the transaction
+  tx.finalize()
+  // Return the transaction hex
+  const txHex = tx.hex
+  console.log(txHex)
+  return txHex
 }
 
-const receive = () => {
-  return 0
+const getBalance = async (address) => {
+  // Get API data from mempool.space
+  const response = await fetch(`https://mempool.space/api/address/${address}`)
+  const data = await response.json()
+  // Get the Chain and Mempool stats
+  const chainStats = data.chain_stats
+  const mempoolStats = data.mempool_stats
+  // Calculate the funded sums and spent sums
+  const fundedSum = chainStats.funded_txo_sum + mempoolStats.funded_txo_sum
+  const spentSum = chainStats.spent_txo_sum + mempoolStats.spent_txo_sum
+  // Calculate and return the balance
+  const balance = fundedSum - spentSum
+  return balance
 }
 
-const createWallet = () => {
+const createPrivateKey = () => {
   const privateKey = secp.utils.randomPrivateKey()
-  const publicKey = secp.getPublicKey(privateKey, true)
+  return privateKey
+}
 
+const deriveWallet = (privateKey) => {
+  const publicKey = secp.getPublicKey(privateKey, true)
   const scriptInfo = btc.p2wpkh(publicKey)
   const address = scriptInfo.address
+  return { publicKey, address }
+}
 
-  return { privateKey, publicKey, address }
+const getPublicKeyFromPrivateKey = (privateKey) => {
+  return secp.getPublicKey(privateKey, true)
+}
+
+const getAddressFromPublicKey = (publicKey) => {
+  const scriptInfo = btc.p2wpkh(publicKey)
+  const address = scriptInfo.address
+  return address
 }
 
 export default function Home() {
   const title = "BitcoinWallet"
 
-  const { privateKey, publicKey, address } = createWallet()
+  //const newPrivateKey = createPrivateKey()
+  //console.log(newPrivateKey)
+
+  const privateKey = hex.decode('dc3e952f42228ab134e416fd889bca28e706ef3b764ac1b024e963cd0ca781b5')
+  const { publicKey, address } = deriveWallet(privateKey)
+
+  //console.log(`Private Key: ${hex.encode(privateKey)}`)
+  //console.log(`Public Key: ${hex.encode(publicKey)}`)
+  //console.log(`Address: ${address}`)
+
+  const [recipient, setRecipient] = useState("")
+  const [amount, setAmount] = useState(0)
+  const [balance, setBalance] = useState(0)
+  const [tx, setTx] = useState("")
+
+  useEffect(() => {
+    getBalance(address).then((balance) => {
+      setBalance(balance)
+    })
+  }, [balance])
 
   return (
     <>
@@ -37,15 +113,56 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
+      <Modal
+        id="sendModal"
+        title="Send"
+        action={async () => {
+          const newTx = await send(privateKey, recipient, amount)
+          setTx(newTx)
+        }}
+        actionLabel="Send"
+        body={
+          <>
+            <div className="mb-3">
+              <label htmlFor="recipient" className="form-label">Recipient</label>
+              <input className="form-control" id="recipient" value={recipient} onChange={e => setRecipient(e.target.value)} />
+            </div>
+            <div className="mb-3">
+              <label htmlFor="amount" className="form-label">Amount</label>
+              <input className="form-control" id="amount" value={amount} onChange={e => setAmount(e.target.value)} />
+            </div>
+          </>
+        }
+      />
+      <Modal
+        id="receiveModal"
+        title="Receive"
+        body={
+          <>
+            <p>Address:</p>
+            <p>{address}</p>
+          </>
+        }
+      />
       <main className={styles.main}>
         <h1>BitcoinWallet</h1>
 
+        <div>
+          <h1 className="display-1">{balance / 10**8}</h1>
+          <h2 className="text-center">BTC</h2>
+        </div>
+
+        { tx ? (
+          <textarea className="form-control" id="tx" rows="5" value={tx} readOnly></textarea>
+        ) : null }
+
         <div className="d-grid gap-2 col-6 mx-auto">
           <button className="btn btn-primary" type="button"
-            data-bs-toggle="modal" data-bs-target="#exampleModal">
+            data-bs-toggle="modal" data-bs-target="#sendModal">
             Send
           </button>
-          <button className="btn btn-secondary" type="button" onClick={receive}>
+          <button className="btn btn-secondary" type="button"
+            data-bs-toggle="modal" data-bs-target="#receiveModal">
             Receive
           </button>
         </div>

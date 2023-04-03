@@ -4,7 +4,13 @@ import '@/components/styles/globals.css'
 
 import dynamic from "next/dynamic"
 
+import { useEffect } from 'react'
+
 export function App({ Component, pageProps }) {
+  useEffect(() => {
+    require("node_modules/bootstrap/dist/js/bootstrap.bundle.min.js")
+  }, [])
+
   return <Component {...pageProps} />
 }
 
