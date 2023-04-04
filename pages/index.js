@@ -1,12 +1,12 @@
+import { useEffect, useState } from "react"
 import Head from "next/head"
 import styles from "@/components/styles/Home.module.css"
 import Modal from "../components/Modal"
-import { useEffect, useState } from 'react'
 import * as btc from "@scure/btc-signer"
 import * as secp from "@noble/secp256k1"
 import { hex } from "@scure/base"
 
-const broadcast = async (txHex) => {
+const broadcastTx = async (txHex) => {
   try {
     const response = await fetch('/api/tx', {
       method: 'POST',
@@ -15,7 +15,6 @@ const broadcast = async (txHex) => {
     })
     if (response.ok) {
       const data = await response.json()
-      console.log(data)
       const txid = data.txid
       return txid
     } else {
@@ -27,13 +26,22 @@ const broadcast = async (txHex) => {
   }
 }
 
+const estimateTxSize = (currentLength, numNewOutputs, numSignatures) => {
+  const bytesPerOutput = 31
+  const bytesPerSignature = 110
+  const sigDiscount = 4
+  const signatureVbytes = Math.ceil(bytesPerSignature/sigDiscount)*numSignatures 
+  const vbytes = currentLength + bytesPerOutput*numNewOutputs + signatureVbytes
+  return vbytes
+}
+
 const getFees = async () => {
   const response = await fetch('https://mempool.space/api/v1/fees/recommended')
   const data = await response.json()
   return data
 }
 
-const send = async (privateKey, recipientAddress, amount) => {
+const createTx = async (privateKey, recipientAddress, amount) => {
   // Derive the sender information
   const senderPublicKey = getPublicKeyFromPrivateKey(privateKey)
   const senderAddress = getAddressFromPublicKey(senderPublicKey)
@@ -56,22 +64,13 @@ const send = async (privateKey, recipientAddress, amount) => {
   }
   // Add an output to the recipient address
   tx.addOutputAddress(recipientAddress, BigInt(amount))
-  console.log(`Unsigned transaction:\n${hex.encode(tx.unsignedTx)}`)
   // Add an output to the sender address
-  const numSignatures = 1
-  const numNewOutputs = 1
-  const txBytes = tx.unsignedTx.length + 31*numNewOutputs + Math.ceil(110/4)*numSignatures
-  console.log(txBytes)
+  const byteEstimate = estimateTxSize(tx.unsignedTx.length, 1, 1)
   const fees = await getFees()
   const feeRate = fees.fastestFee
   const currentBalance = BigInt(await getBalance(senderAddress))
-  const changeAmount = currentBalance - BigInt(amount) - BigInt(feeRate * txBytes)
-  console.log(currentBalance)
-  console.log(amount)
-  console.log(changeAmount)
+  const changeAmount = currentBalance - BigInt(amount) - BigInt(feeRate * byteEstimate)
   tx.addOutputAddress(senderAddress, changeAmount)
-  console.log(`Unsigned transaction:\n${hex.encode(tx.unsignedTx)}`)
-
   // Sign the inputs
   tx.sign(privateKey)
   // Finalize the transaction
@@ -123,8 +122,8 @@ export default function Home() {
 
   //const newPrivateKey = createPrivateKey()
   //console.log(newPrivateKey)
-
   const privateKey = hex.decode('dc3e952f42228ab134e416fd889bca28e706ef3b764ac1b024e963cd0ca781b5')
+
   const { publicKey, address } = deriveWallet(privateKey)
 
   //console.log(`Private Key: ${hex.encode(privateKey)}`)
@@ -155,10 +154,9 @@ export default function Home() {
         id="sendModal"
         title="Send"
         action={async () => {
-          const newTx = await send(privateKey, recipient, amount)
-          console.log(newTx)
-          const txid = await broadcast(newTx)
+          const newTx = await createTx(privateKey, recipient, amount)
           setTx(newTx)
+          const txid = await broadcastTx(newTx)
           setTxid(txid)
         }}
         actionLabel="Send"
@@ -198,7 +196,12 @@ export default function Home() {
         ) : null }
 
         { txid ? (
-          <textarea className="form-control" id="txid" rows="2" value={txid} readOnly></textarea>
+          <>
+            <a className="link-primary" href={`https://mempool.space/tx/${txid}`}
+              target="_blank" rel="noopener noreferrer">
+              {txid}
+            </a>
+          </>
         ) : null }
 
         <div className="d-grid gap-2 col-6 mx-auto">

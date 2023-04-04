@@ -9,12 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@mempool/mempool.js": "^2.3.0",
     "@noble/secp256k1": "^2.0.0",
     "@scure/base": "^1.1.1",
     "@scure/btc-signer": "^0.5.1",
     "bootstrap": "^5.2.3",
-    "get-random-values": "^2.1.0",
     "next": "13.2.4",
     "node-fetch": "^3.3.1",
     "react": "18.2.0",
