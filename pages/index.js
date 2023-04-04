@@ -6,6 +6,33 @@ import * as btc from "@scure/btc-signer"
 import * as secp from "@noble/secp256k1"
 import { hex } from "@scure/base"
 
+const broadcast = async (txHex) => {
+  try {
+    const response = await fetch('/api/tx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txHex })
+    })
+    if (response.ok) {
+      const data = await response.json()
+      console.log(data)
+      const txid = data.txid
+      return txid
+    } else {
+      const data = await response.json()
+      throw new Error(data.error)
+    }
+  } catch(error) {
+    console.error(error)
+  }
+}
+
+const getFees = async () => {
+  const response = await fetch('https://mempool.space/api/v1/fees/recommended')
+  const data = await response.json()
+  return data
+}
+
 const send = async (privateKey, recipientAddress, amount) => {
   // Derive the sender information
   const senderPublicKey = getPublicKeyFromPrivateKey(privateKey)
@@ -15,12 +42,9 @@ const send = async (privateKey, recipientAddress, amount) => {
   // Get the UTXOs from mempool.space
   const response = await fetch(`https://mempool.space/api/address/${senderAddress}/utxo`)
   const data = await response.json()
-  console.log('Data from mempool.space:')
-  console.log(data)
   // Add the UTXOs as inputs to the transaction
   for (const utxo of data) {
     const inputScript = btc.p2wpkh(secp.getPublicKey(privateKey, true)).script
-    console.log(inputScript)
     tx.addInput({
       txid: utxo.txid,
       index: utxo.vout,
@@ -32,7 +56,21 @@ const send = async (privateKey, recipientAddress, amount) => {
   }
   // Add an output to the recipient address
   tx.addOutputAddress(recipientAddress, BigInt(amount))
-  console.log(tx.unsignedTx)
+  console.log(`Unsigned transaction:\n${hex.encode(tx.unsignedTx)}`)
+  // Add an output to the sender address
+  const numSignatures = 1
+  const numNewOutputs = 1
+  const txBytes = tx.unsignedTx.length + 31*numNewOutputs + Math.ceil(110/4)*numSignatures
+  console.log(txBytes)
+  const fees = await getFees()
+  const feeRate = fees.fastestFee
+  const currentBalance = BigInt(await getBalance(senderAddress))
+  const changeAmount = currentBalance - BigInt(amount) - BigInt(feeRate * txBytes)
+  console.log(currentBalance)
+  console.log(amount)
+  console.log(changeAmount)
+  tx.addOutputAddress(senderAddress, changeAmount)
+  console.log(`Unsigned transaction:\n${hex.encode(tx.unsignedTx)}`)
 
   // Sign the inputs
   tx.sign(privateKey)
@@ -40,7 +78,6 @@ const send = async (privateKey, recipientAddress, amount) => {
   tx.finalize()
   // Return the transaction hex
   const txHex = tx.hex
-  console.log(txHex)
   return txHex
 }
 
@@ -98,6 +135,7 @@ export default function Home() {
   const [amount, setAmount] = useState(0)
   const [balance, setBalance] = useState(0)
   const [tx, setTx] = useState("")
+  const [txid, setTxid] = useState("")
 
   useEffect(() => {
     getBalance(address).then((balance) => {
@@ -118,7 +156,10 @@ export default function Home() {
         title="Send"
         action={async () => {
           const newTx = await send(privateKey, recipient, amount)
+          console.log(newTx)
+          const txid = await broadcast(newTx)
           setTx(newTx)
+          setTxid(txid)
         }}
         actionLabel="Send"
         body={
@@ -154,6 +195,10 @@ export default function Home() {
 
         { tx ? (
           <textarea className="form-control" id="tx" rows="5" value={tx} readOnly></textarea>
+        ) : null }
+
+        { txid ? (
+          <textarea className="form-control" id="txid" rows="2" value={txid} readOnly></textarea>
         ) : null }
 
         <div className="d-grid gap-2 col-6 mx-auto">
