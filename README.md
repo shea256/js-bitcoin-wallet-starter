@@ -2,11 +2,11 @@
 
 ## Overview
 
-This is a starter app / template for building a Bitcoin Wallet in JavaScript.
+This is a starter app / demo web app for building Bitcoin wallet using JavaScript.
 
 The wallet has a minimal feature set, with just the ability to send and receive transactions.
 
-It uses [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) and [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer) for Bitcoin transaction signing, Next.js as a JS framework, and Bootstrap for standard UI elements.
+The app uses [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) for elliptic curve cryptography, [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer) for Bitcoin transaction signing, Next.js as a JavaScript framework, and Bootstrap for standard UI elements.
 
 On initial startup, the wallet generates a private key and stores it in local storage. On subsequence loads, the wallet checks for a private key in local storage and returns that if it's present.
 
