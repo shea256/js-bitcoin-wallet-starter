@@ -2,14 +2,14 @@ import { useEffect, useState } from "react"
 import Head from "next/head"
 import styles from "@/components/styles/Home.module.css"
 import Modal from "../components/Modal"
-import { broadcastTx, deriveWallet, getBalance } from "../lib/wallet-core" 
+import { broadcastTx, deriveWallet, getBalance, createTx } from "../lib/wallet-core" 
 import { getOrMakeStoreAndGetPrivateKey } from "../lib/storage"
 import { hex } from "@scure/base"
 
 export default function Home() {
   // Manage the private keys
   const privateKey = getOrMakeStoreAndGetPrivateKey()
-  console.log(hex.encode(privateKey))
+  console.log(`Private key:\n${hex.encode(privateKey)}`)
   const { address } = deriveWallet(privateKey)
 
   // Manage the state
